@@ -20,7 +20,6 @@ header{position:sticky;top:0;z-index:20;background:linear-gradient(135deg,#4f46e
 .brand{font-weight:600;font-size:18px;flex:1}
 .hdate{font-size:13px;opacity:.9}
 .icon-btn{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-size:17px}
-header .icon-btn{color:#fff;background:rgba(255,255,255,.18)}
 main{max-width:640px;margin:0 auto;padding:12px}
 .tab{display:none}.tab.active{display:block;animation:fade .2s}
 @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
@@ -115,7 +114,6 @@ td.wrap{white-space:normal;min-width:130px}
 <header>
   <div class="brand">💰 M-Log</div>
   <div class="hdate" id="hdate"></div>
-  <button class="icon-btn" id="btnSetting" title="ตั้งค่า">⚙️</button>
 </header>
 
 <main>
@@ -228,6 +226,8 @@ td.wrap{white-space:normal;min-width:130px}
 
 <script>
 /* ========== ตั้งค่า ========== */
+const API = 'https://script.google.com/macros/s/AKfycby5GREZs8EjtmTTQokRLA26Bxg_lL5219_cqhGVeuBL7AG88yUig9FWwpTyqPvj7bJq/exec';
+
 const CATS = {
   'รายรับ': ['เงินเดือน','ล่วงเวลา','เวรคลินิก','สามี','พ่อ-แม่','ตกเบิก','ถูกหวย','อื่นๆ'],
   'รายจ่าย': ['ของใช้ในชีวิตประจำวัน','เครื่องสำอาง','น้ำมัน','อาหาร','กาแฟ-ขนม','Shopping Online','ของใช้ฟุ่มเฟือย','จ่ายบิล โทรศัพท์-อินเตอร์เน็ต','จ่ายบิลสมาชิกรายเดือน','ชำระหนี้บัตรเครดิต','ซื้อของให้ที่บ้าน','ซื้อของให้สามี','อื่นๆ']
@@ -245,7 +245,6 @@ const PERIODS = [['today','วันนี้'],['week','สัปดาห์�
 
 /* ========== State & helpers ========== */
 const $ = s => document.querySelector(s);
-let API = localStorage.getItem('mlog_api') || '';
 const st = { type:'รายจ่าย', cat:null, pay:localStorage.getItem('mlog_pay') || null, amt:'0' };
 let todayRows = [], allData = null, curRows = [], period = 'month', shown = 50, saving = false, curDay = '';
 
@@ -254,31 +253,26 @@ const fmtDate = d => `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDat
 const todayStr = () => fmtDate(new Date());
 const money = n => Number(n||0).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-function thDate(s){ const [y,m,d] = s.split('-').map(Number); return `${d} ${MONTHS[m-1]} ${String(y+543).slice(-2)}`; }
+function thDate(s){ const [y,m,d] = String(s).split('-').map(Number); return d ? `${d} ${MONTHS[m-1]} ${String(y+543).slice(-2)}` : s; }
 
 function toast(msg, type=''){
   const t = $('#toast'); t.textContent = msg; t.className = 'show ' + type;
-  clearTimeout(t._h); t._h = setTimeout(() => t.className = '', 2300);
+  clearTimeout(t._h); t._h = setTimeout(() => t.className = '', 2600);
 }
 
-function ensureApi(force){
-  if (API && !force) return true;
-  const u = prompt('วาง URL ของ Google Apps Script Web App (ลงท้ายด้วย /exec)', API || '');
-  if (u && /^https:\/\/script\.google\.com\/.+\/exec/.test(u.trim())) {
-    API = u.trim(); localStorage.setItem('mlog_api', API); return true;
-  }
-  if (u !== null) toast('URL ไม่ถูกต้อง','err');
-  return !!API;
-}
+// เติมค่าเวลาต่อท้าย + no-store เพื่อกันเบราว์เซอร์ใช้ผลลัพธ์เก่า
 async function apiGet(params){
-  if (!ensureApi()) throw new Error('ยังไม่ได้ตั้งค่า URL');
-  const r = await fetch(API + '?' + new URLSearchParams(params));
-  const j = await r.json(); if (!j.ok) throw new Error(j.error); return j;
+  const qs = new URLSearchParams({ ...params, _: Date.now() });
+  const r = await fetch(API + '?' + qs, { cache:'no-store', redirect:'follow' });
+  const txt = await r.text();
+  let j; try { j = JSON.parse(txt); } catch(e) { throw new Error('เซิร์ฟเวอร์ตอบกลับไม่ถูกต้อง'); }
+  if (!j.ok) throw new Error(j.error); return j;
 }
 async function apiPost(body){
-  if (!ensureApi()) throw new Error('ยังไม่ได้ตั้งค่า URL');
-  const r = await fetch(API, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify(body) });
-  const j = await r.json(); if (!j.ok) throw new Error(j.error); return j;
+  const r = await fetch(API, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify(body), redirect:'follow' });
+  const txt = await r.text();
+  let j; try { j = JSON.parse(txt); } catch(e) { throw new Error('เซิร์ฟเวอร์ตอบกลับไม่ถูกต้อง'); }
+  if (!j.ok) throw new Error(j.error); return j;
 }
 
 /* ========== Tabs ========== */
@@ -287,7 +281,6 @@ document.querySelectorAll('.tabbar button').forEach(b => b.onclick = () => {
   document.querySelectorAll('.tab').forEach(s => s.classList.toggle('active', s.id === 'tab-' + b.dataset.tab));
   window.scrollTo(0,0);
 });
-$('#btnSetting').onclick = () => { if (ensureApi(true)) { toast('บันทึก URL แล้ว','ok'); loadToday(); } };
 
 /* ========== Form ========== */
 document.querySelectorAll('#typeSeg button').forEach(b => b.onclick = () => {
@@ -335,7 +328,6 @@ $('#btnSave').onclick = async () => {
   if (!(amt > 0)) return toast('กรุณาใส่จำนวนเงิน','err');
   const date = $('#fDate').value || todayStr();
 
-  // เตือนกันบันทึกซ้ำ
   if (date === todayStr() && todayRows.some(r => r.type===st.type && r.cat===st.cat && Number(r.amt)===amt)
       && !confirm(`วันนี้มีรายการ "${st.cat}" ${money(amt)} บาท แล้ว\nต้องการบันทึกซ้ำหรือไม่?`)) return;
 
@@ -359,7 +351,7 @@ $('#btnSave').onclick = async () => {
 
 /* ========== Today box ========== */
 function cacheToday(){ localStorage.setItem('mlog_today', JSON.stringify({ d:todayStr(), rows:todayRows })); }
-function renderToday(){
+function renderToday(errMsg){
   $('#todayLbl').textContent = thDate(todayStr());
   let inc = 0, exp = 0;
   todayRows.forEach(r => { if (r.type === 'รายรับ') inc += +r.amt; else exp += +r.amt; });
@@ -371,14 +363,14 @@ function renderToday(){
       <div class="ti-main"><div>${esc(r.cat)}</div><small>${esc(r.pay)}${r.detail?' · '+esc(r.detail):''}${r.note?' · '+esc(r.note):''}</small></div>
       <div class="ti-amt ${isInc?'inc':'exp'}">${isInc?'+':'-'}${money(r.amt)}</div>
       <button class="ti-del" data-del="${esc(r.id)}" title="ลบ">×</button></div>`;
-  }).join('') : '<div class="empty">ยังไม่มีรายการวันนี้</div>';
+  }).join('') : `<div class="empty">${errMsg ? '⚠️ ' + esc(errMsg) : 'ยังไม่มีรายการวันนี้'}</div>`;
 }
 async function loadToday(){
   const d = todayStr(); curDay = d;
   try { const o = JSON.parse(localStorage.getItem('mlog_today') || 'null'); if (o && o.d === d) { todayRows = o.rows; renderToday(); } } catch(e){}
   $('#icoToday').classList.add('spin');
   try { const j = await apiGet({ action:'today', date:d }); todayRows = j.data; renderToday(); cacheToday(); }
-  catch (e) { renderToday(); toast('โหลดรายการวันนี้ไม่สำเร็จ','err'); }
+  catch (e) { renderToday('โหลดไม่สำเร็จ: ' + e.message); }
   finally { $('#icoToday').classList.remove('spin'); }
 }
 $('#btnRefreshToday').onclick = loadToday;
@@ -464,7 +456,7 @@ function applyDash(){
   $('#rangeLbl').textContent = '📆 ' + (period === 'all' ? 'ทั้งหมด' : (s === e ? lblDate(s) : lblDate(s) + ' – ' + lblDate(e)));
 
   bars($('#barsExp'), mExp); bars($('#barsInc'), mInc); bars($('#barsPay'), mPay);
-  $('#cntLbl').textContent = `(${rows.length} รายการ)`;
+  $('#cntLbl').textContent = `(${rows.length} จาก ${allData.length} รายการ)`;
   curRows = rows; renderTable();
 }
 
@@ -472,12 +464,12 @@ function renderTable(){
   const list = curRows.slice(0, shown);
   $('#tbody').innerHTML = list.length ? list.map(r => {
     const isInc = r.type === 'รายรับ';
-    return `<tr><td>${thDate(r.date)}</td><td><span class="tag ${isInc?'inc':'exp'}">${r.type}</span></td>
+    return `<tr><td>${thDate(r.date)}</td><td><span class="tag ${isInc?'inc':'exp'}">${esc(r.type)}</span></td>
       <td>${ICONS[r.cat]||''} ${esc(r.cat)}</td><td>${esc(r.pay)}</td>
       <td class="num ${isInc?'inc':'exp'}">${isInc?'+':'-'}${money(r.amt)}</td>
       <td class="wrap">${esc(r.detail)}</td><td class="wrap">${esc(r.note)}</td>
       <td><button class="del" data-del="${esc(r.id)}" title="ลบ">🗑</button></td></tr>`;
-  }).join('') : '<tr><td colspan="8" class="empty">ไม่พบรายการ</td></tr>';
+  }).join('') : '<tr><td colspan="8" class="empty">ไม่พบรายการในช่วงที่เลือก</td></tr>';
   $('#btnMore').hidden = curRows.length <= shown;
 }
 
@@ -489,6 +481,7 @@ async function loadAll(){
     allData = j.data; shown = 50;
     $('#dashIntro').hidden = true; $('#dashBody').hidden = false;
     applyDash();
+    toast(`โหลดแล้ว ${allData.length} รายการ`,'ok');
   } catch (e) { toast('โหลดข้อมูลไม่สำเร็จ: ' + e.message,'err'); }
   finally { b.disabled = false; b.textContent = '📥 โหลดรายการ'; $('#icoReload').classList.remove('spin'); }
 }
@@ -500,16 +493,16 @@ $('#fSearch').oninput = () => { shown = 50; applyDash(); };
 $('#btnMore').onclick = () => { shown += 50; renderTable(); };
 
 /* ========== Init ========== */
+function setHeaderDate(){
+  $('#hdate').textContent = new Date().toLocaleDateString('th-TH', { weekday:'short', day:'numeric', month:'short', year:'2-digit' });
+}
 $('#fDate').value = todayStr();
-$('#hdate').textContent = new Date().toLocaleDateString('th-TH', { weekday:'short', day:'numeric', month:'short', year:'2-digit' });
+setHeaderDate();
 renderCats(); renderPays(); showAmt(); buildCatFilter(); loadToday();
 
-// ถ้าเปิดแอปค้างไว้ข้ามวัน ให้รีเซ็ตเป็นวันใหม่อัตโนมัติ
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden && curDay !== todayStr()) {
-    $('#fDate').value = todayStr();
-    $('#hdate').textContent = new Date().toLocaleDateString('th-TH', { weekday:'short', day:'numeric', month:'short', year:'2-digit' });
-    loadToday();
+    $('#fDate').value = todayStr(); setHeaderDate(); loadToday();
   }
 });
 </script>
